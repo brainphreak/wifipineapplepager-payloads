@@ -1,8 +1,8 @@
 #!/bin/bash
 # Title: Client Access Manager
 # Author: PanicAcid
-# Description: Toggles SSH and Web UI access on the Client WiFi interface with IP reporting.
-# Version: 1.0
+# Description: Toggles SSH and Web UI access on the Client WiFi interface.
+# Version: 1.1
 
 RULE_NAME="dev_access_rule"
 
@@ -32,6 +32,7 @@ case "$RESP" in
             fw4 restart
             
             LOG "[*] Access Restricted"
+            LOG "[*] Re-run payload to re-enable access."
         else
             LOG "Configuring firewall exception..."
             
@@ -66,6 +67,7 @@ case "$RESP" in
             else
                 LOG "[!] Warning: No Client IP detected"
             fi
+            LOG "[*] Re-run payload to remove access."
         fi
         ;;
     $DUCKYSCRIPT_USER_DENIED)

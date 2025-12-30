@@ -1,7 +1,0 @@
-{
-    "name": "Client Access Manager",
-    "version": "1.0",
-    "description": "Toggles SSH/WebUI on Client AP WiFi",
-    "author": "PanicAcid",
-    "executable": "payload.sh"
-}
