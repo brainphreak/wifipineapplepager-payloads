@@ -20,4 +20,18 @@ This payload can be used to apply skins to the virtual pager.  A ***Dark Skin***
 
 ---
 
+### WANT TO ADD A SKIN ###
+
+    Just make a pull request with the new skin in the library/user/virtual_pager/skins directory
+
+---
+
 I will update this to use the list picker when it is made available!
+
+## Change Log ##
+## 1.1 
+* Added second skin
+* Moved packes skins into a skins directory
+* Added version future proofing for skins.     
+## 1.0
+* Initial Release

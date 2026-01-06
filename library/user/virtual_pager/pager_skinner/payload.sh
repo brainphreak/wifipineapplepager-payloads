@@ -2,16 +2,21 @@
 # Title: Pager Skinner
 # Description: Installs and switches between Virtual Pager UI skins.
 # Author: Amilious
-# Version: 1.0
+# Version: 1.1   # <-- Increment this when you make significant changes
+CURRENT_VERSION="1.1"   # <-- Must match the # Version: above
 
 # Unique payload name for config storage
 PAYLOAD_NAME="pagerskinner"
 
 # Config options
 CONFIG_SKIN="current_skin"
+CONFIG_VERSION="payload_version"
 
-# Get the directory where this payload.sh is located
-PAYLOAD_DIR="$(dirname "$(realpath "$0")")"
+# Get the needed directories
+PAYLOAD_DIR="$(dirname "$(realpath "$0")")"   # Directory containing payload.sh
+SKINS_DIR="/mmc/root/ui_skins"                # Where installed skins live
+BACKUP_DIR="$SKINS_DIR/default"               # Default (backup) skin
+SKINS_ZIP_DIR="$PAYLOAD_DIR/skins"            # Dedicated folder for skin .zip files
 
 # Check if unzip is available
 if ! command -v unzip >/dev/null 2>&1; then
@@ -24,14 +29,24 @@ if ! command -v unzip >/dev/null 2>&1; then
     fi
 fi
 
-# Define directories
-SKINS_DIR="/mmc/root/ui_skins"
-BACKUP_DIR="$SKINS_DIR/default"
-DARK_DIR="$SKINS_DIR/dark"
-
-# Ensure main skins directory exists
+# Ensure main directories exist
 mkdir -p "$SKINS_DIR"
-first=0  
+mkdir -p "$SKINS_ZIP_DIR"
+first=0
+version_updated=0
+
+# Version Check & Update Prompt
+STORED_VERSION=$(PAYLOAD_GET_CONFIG "$PAYLOAD_NAME" "$CONFIG_VERSION")
+if [ -z "$STORED_VERSION" ] || [ "$STORED_VERSION" != "$CURRENT_VERSION" ]; then
+    # First run or version upgrade
+    if [ -n "$STORED_VERSION" ]; then
+        PROMPT "Pager Skinner has been updated!\n\nOld version: $STORED_VERSION\nNew version: $CURRENT_VERSION\n\n• Now uses a dedicated 'skins/' folder for .zip files\n• Improved first-run experience\n• Better version tracking\n\nEnjoy the new features!"
+        version_updated=1
+    fi
+
+    # Always update to current version
+    PAYLOAD_SET_CONFIG "$PAYLOAD_NAME" "$CONFIG_VERSION" "$CURRENT_VERSION"
+fi
 
 # Backup default UI images only if backup doesn't already exist or is empty
 if [ ! -d "$BACKUP_DIR" ] || [ -z "$(ls -A "$BACKUP_DIR" 2>/dev/null)" ]; then
@@ -47,19 +62,31 @@ else
     LOG "Default backup already exists. Skipping backup."
 fi
 
-# Install dark theme only if not already present
-if [ ! -d "$DARK_DIR" ] || [ -z "$(ls -A "$DARK_DIR" 2>/dev/null)" ]; then
-    if [ -f "$PAYLOAD_DIR/dark.zip" ]; then
-        LOG "Installing dark theme..."
-        mkdir -p "$DARK_DIR"
-        unzip -o "$PAYLOAD_DIR/dark.zip" -d "$DARK_DIR"
-        LOG green "Dark theme installed successfully!"
-    else
-        LOG red "dark.zip not found in payload directory."
-        LOG red "Place dark.zip alongside payload.sh to install the dark skin."
-    fi
-else
-    LOG "Dark theme already installed. Skipping extraction."
+# === Automatically install ALL .zip files from the dedicated skins folder ===
+installed_count=0
+if [ -d "$SKINS_ZIP_DIR" ]; then
+    for zipfile in "$SKINS_ZIP_DIR"/*.zip; do
+        [ -f "$zipfile" ] || continue
+
+        skin_name="$(basename "$zipfile" .zip)"
+        target_dir="$SKINS_DIR/$skin_name"
+
+        if [ ! -d "$target_dir" ] || [ -z "$(ls -A "$target_dir" 2>/dev/null)" ]; then
+            LOG "Installing skin from $(basename "$zipfile") ..."
+            mkdir -p "$target_dir"
+            unzip -o "$zipfile" -d "$target_dir" >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                LOG green "Skin '$skin_name' installed successfully."
+                ((installed_count++))
+            else
+                LOG red "Failed to extract $zipfile"
+            fi
+        fi
+    done
+fi
+
+if [ $installed_count -gt 0 ]; then
+    LOG green "$installed_count new skin(s) installed."
 fi
 
 # Get currently stored skin
@@ -70,20 +97,20 @@ if [ -z "$CURRENT_SKIN" ]; then
 fi
 LOG "Currently loaded skin: $CURRENT_SKIN"
 
-# Show information about the app if first run
+# Show first-run info (only on true first install)
 if [ "$first" -eq 1 ]; then
-    PROMPT "A new directory $SKINS_DIR has been created to hold skins. You can add your own skins for the virtual pager if you like."
+    PROMPT "Welcome to Pager Skinner!\n\nA new directory has been created:\n$SKINS_DIR\n\nto store all your UI skins.\n\nTo add more skins:\nPlace .zip files in:\n$SKINS_ZIP_DIR\n\nThey will be automatically installed when you run this payload."
 fi
 
 # Build numbered skin list and prompt text
-LOG "\n\n────────────────────────────────────"
+LOG "\n────────────────────────────────────"
 LOG "── Available skins ─────────────────"
 LOG "────────────────────────────────────"
 
 SKINS=()
 i=1
 current_index=0
-prompt_text=""  # Will build the full prompt string
+prompt_text=""
 
 for dir in "$SKINS_DIR"/*/ ; do
     if [ -d "$dir" ] && [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
@@ -99,7 +126,6 @@ for dir in "$SKINS_DIR"/*/ ; do
             LOG "$line"
         fi
 
-        # Append to prompt_text (preserve newlines for readability in PROMPT)
         prompt_text="${prompt_text}${line}\n"
         ((i++))
     fi
@@ -107,32 +133,27 @@ done
 
 LOG "────────────────────────────────────\n"
 
-# Default to 1 if no current skin matched
-if [ "$current_index" -eq 0 ]; then
-    current_index=1
-fi
+# Fallback
+[ "$current_index" -eq 0 ] && current_index=1
 
-# Show the full skin list in a PROMPT dialog
+# Show skin selection dialog
 PROMPT "Select a skin:\n$prompt_text"
 
-#LOG "Press A to continue to selection..."
-#WAIT_FOR_BUTTON_PRESS A
-
-# Use NUMBER_PICKER with pre-selection
+# Use NUMBER_PICKER with pre-selected current skin
 SELECTED=$(NUMBER_PICKER "Skin Number (1-$((i-1)))" "$current_index") || {
     LOG red "Selection cancelled."
     exit 0
 }
 
-# Validate
+# Validate selection
 if ! [[ "$SELECTED" =~ ^[0-9]+$ ]] || [ "$SELECTED" -lt 1 ] || [ "$SELECTED" -gt ${#SKINS[@]} ]; then
     LOG red "Invalid selection."
     exit 1
 fi
 
+# Apply the chosen skin
 __spinnerid=$(START_SPINNER "Skinning...")
 
-# Apply chosen skin
 CHOSEN_SKIN="${SKINS[$((SELECTED-1))]}"
 LOG "Applying skin: $CHOSEN_SKIN ..."
 
@@ -141,7 +162,6 @@ cp -r "$SKINS_DIR/$CHOSEN_SKIN"/* /pineapple/ui/images/
 
 PAYLOAD_SET_CONFIG "$PAYLOAD_NAME" "$CONFIG_SKIN" "$CHOSEN_SKIN"
 
+STOP_SPINNER "$__spinnerid"
 LOG green "Skin '$CHOSEN_SKIN' applied successfully!"
-STOP_SPINNER ${__spinnerid}
-
-LOG "The Virtual Pager UI should now reflect the new skin. If not, clear your browser cache and hard reload!"
+LOG "The Virtual Pager UI should now reflect the new skin.\nIf not, clear browser cache and hard reload!"
